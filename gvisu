@@ -149,8 +149,8 @@ class Graph(Gtk.Window):
 
             for point in enumerate(data):
                 i, q = point
-
-                circle(r, i, self.spectrum[i % 63], 1.0*abs(q)/10, v /8)
+                if 0 > q: q = 0
+                circle(r, i, self.spectrum[i % 63], 1.0*q/4, v /8)
 
             db.flush()
 
@@ -162,8 +162,8 @@ p = pyaudio.PyAudio()
 
 # algorithm parameters
 bins        = 40
-chunk       = 4096
-sample_rate = 88200
+chunk       = 2048
+sample_rate = 44100
 
 def get_coeffs(data, width, sample_rate, bins):
     fmt = "%dH"%(len(data)/2)
