@@ -81,9 +81,6 @@ class Graph(Gtk.Window):
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("delete-event", Gtk.main_quit)
         self.show_all()      
-    
-    def expose(*args):
-        print "expose"
 
     def on_draw(self, widget, cr):
         """Throw double buffer into widget drawable"""
@@ -109,8 +106,6 @@ class Graph(Gtk.Window):
                 widget.get_allocated_height()
             )
 
-        # Initialize the buffer
-        self.create_diagram()
         return False
         
 
@@ -126,7 +121,6 @@ class Graph(Gtk.Window):
                 self.h
             )
 
-        """Draw something into the buffer"""
         db = self.double_buffer
 
         if db is not None:
@@ -167,29 +161,10 @@ class Graph(Gtk.Window):
 p = pyaudio.PyAudio()
 
 # algorithm parameters
-bins        = 30
+bins        = 40
 chunk       = 4096
-scale       = 100
-exponent    = .5
-sample_rate = 88100
+sample_rate = 88200
 
-def find_input_device():
-    device_index = None            
-    for i in range( p.get_device_count() ):     
-        devinfo = p.get_device_info_by_index(i)   
-        print( "Device %d: %s"%(i,devinfo["name"]) )
-
-        for keyword in ["mic","input"]:
-            if keyword in devinfo["name"].lower():
-                print( "Found an input: device %d - %s"%(i,devinfo["name"]) )
-                device_index = i
-                return device_index
-
-    if device_index == None:
-        print( "No preferred input found; using default input device." )
-
-    return device_index
- 
 def get_coeffs(data, width, sample_rate, bins):
     fmt = "%dH"%(len(data)/2)
     data = struct.unpack(fmt, data)
@@ -208,7 +183,7 @@ def get_coeffs(data, width, sample_rate, bins):
     
     return levels
 
-def visualize(device):
+def visualize():
     global data
     
     p = pyaudio.PyAudio()
@@ -218,11 +193,10 @@ def visualize(device):
                     rate = sample_rate,
                     input = True,
                     frames_per_buffer = chunk,
-                    input_device_index = device)
+                    input_device_index = None)
     
     try:
         while True:
-            catch_data = False
             data = get_coeffs(stream.read(chunk), 
                               chunk, 
                               sample_rate, 
@@ -236,11 +210,11 @@ def visualize(device):
 
 
 def main():
-    th = Thread(target=visualize, args=(find_input_device(),))
+    th = Thread(target=visualize)
     th.daemon = True
     th.start()
     app = Graph()
-    GLib.timeout_add(50, app.create_diagram)
+    GLib.timeout_add(60, app.create_diagram)
     Gtk.main()
 
 if __name__ == '__main__':
