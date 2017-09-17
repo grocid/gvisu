@@ -1,0 +1,247 @@
+#!/usr/bin/python
+
+import pyaudio
+import numpy
+import audioop
+import sys
+import math
+import struct
+import time
+import sys
+from socket import *
+import gi
+gi.require_version('Gtk', '3.0')
+
+from gi.repository import Gtk
+from gi.repository import PangoCairo
+from gi.repository import GLib
+import cairo
+
+gi.require_version('PangoCairo', '1.0')
+
+import math, random, time
+
+from threading import Thread
+
+
+data = [ 1.0 * random.randint(0, 256) / 32 for i in range(60)]
+
+class Graph(Gtk.Window):
+
+    spectrum = [(252,141,89), (255,255,191),(153,213,148),
+            (215,25,28),  (253,174,97), (171,221,164),
+            (43,131,186), (215,25,28),  (253,174,97),
+            (255,255,191),(171,221,164),(43,131,186),
+            (213,62,79),  (252,141,89), (254,224,139),
+            (230,245,152),(153,213,148),(50,136,189),
+            (213,62,79),  (252,141,89), (254,224,139),
+            (255,255,191),(230,245,152),(153,213,148),
+            (50,136,189), (213,62,79),  (244,109,67),
+            (253,174,97), (254,224,139),(230,245,152),
+            (171,221,164),(102,194,165),(50,136,189),
+            (213,62,79),  (244,109,67), (253,174,97),
+            (254,224,139),(255,255,191),(230,245,152),
+            (171,221,164),(102,194,165),(50,136,189),
+            (158,1,66),   (213,62,79),  (244,109,67),
+            (253,174,97), (254,224,139),(230,245,152),
+            (171,221,164),(102,194,165),(50,136,189),
+            (94,79,162),  (158,1,66),   (213,62,79),
+            (244,109,67), (253,174,97), (254,224,139),
+            (255,255,191),(230,245,152),(171,221,164),
+            (102,194,165),(50,136,189), (94,79,162)]
+
+    cr = None
+    def __init__(self):
+        super(Graph, self).__init__()
+        self.init_ui()
+
+        self.w, self.h = self.get_size() 
+
+        # Create a new buffer
+        self.double_buffer = cairo.ImageSurface(\
+                cairo.FORMAT_ARGB32,
+                self.w,
+                self.h
+            )
+
+        # Initialize the buffer
+        self.create_diagram()
+
+    def init_ui(self):    
+
+        self.darea = Gtk.DrawingArea()
+        self.darea.connect("draw", self.on_draw)
+        self.darea.connect("configure-event", self.on_configure)
+
+        self.double_buffer = None
+
+        self.add(self.darea)
+        self.set_title("Pajen")
+        self.resize(800, 800)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.connect("delete-event", Gtk.main_quit)
+        self.show_all()      
+    
+    def expose(*args):
+        print "expose"
+
+    def on_draw(self, widget, cr):
+        """Throw double buffer into widget drawable"""
+        if self.double_buffer is not None:
+            cr.set_source_surface(self.double_buffer, 0.0, 0.0)
+            cr.paint()
+        else:
+            print('Invalid double buffer')
+
+        return False
+
+    def on_configure(self, widget, event, data=None):
+        """Configure the double buffer based on size of the widget"""
+        # Destroy previous buffer
+        if self.double_buffer is not None:
+            self.double_buffer.finish()
+            self.double_buffer = None
+
+        # Create a new buffer
+        self.double_buffer = cairo.ImageSurface(\
+                cairo.FORMAT_ARGB32,
+                widget.get_allocated_width(),
+                widget.get_allocated_height()
+            )
+
+        # Initialize the buffer
+        self.create_diagram()
+        return False
+        
+
+    def create_diagram(self):
+        if self.double_buffer is not None:
+            self.double_buffer.finish()
+            self.double_buffer = None
+        
+        # Create a new buffer
+        self.double_buffer = cairo.ImageSurface(\
+                cairo.FORMAT_ARGB32,
+                self.w,
+                self.h
+            )
+
+        """Draw something into the buffer"""
+        db = self.double_buffer
+
+        if db is not None:
+            cr = cairo.Context(db)
+
+            self.w, self.h = self.get_size() 
+
+            def circle(r, deg, c, q, p):
+                cr.save()
+                cr.new_path()
+                cr.move_to(self.w / 2, self.h / 2)
+                cr.arc(self.w / 2, self.h / 2, p*q, 
+                       r * deg, r * (deg + 1))
+                cr.close_path()
+                r, g, b = c
+                cr.set_source_rgba(1.0 * r / 256,
+                                   1.0 * g / 256,
+                                   1.0 * b / 256,
+                                   1)
+                cr.fill()
+                cr.stroke_preserve()
+                cr.restore()
+
+            v = min(self.w / 2, self.h / 2) - 20
+            r = 2 * math.pi / len(data)
+
+            for point in enumerate(data):
+                i, q = point
+
+                circle(r, i, self.spectrum[i % 63], 1.0*abs(q)/10, v /8)
+
+            db.flush()
+
+        self.darea.queue_draw()
+        return True
+
+
+p = pyaudio.PyAudio()
+
+# algorithm parameters
+bins        = 30
+chunk       = 4096
+scale       = 100
+exponent    = .5
+sample_rate = 88100
+
+def find_input_device():
+    device_index = None            
+    for i in range( p.get_device_count() ):     
+        devinfo = p.get_device_info_by_index(i)   
+        print( "Device %d: %s"%(i,devinfo["name"]) )
+
+        for keyword in ["mic","input"]:
+            if keyword in devinfo["name"].lower():
+                print( "Found an input: device %d - %s"%(i,devinfo["name"]) )
+                device_index = i
+                return device_index
+
+    if device_index == None:
+        print( "No preferred input found; using default input device." )
+
+    return device_index
+ 
+def get_coeffs(data, width, sample_rate, bins):
+    fmt = "%dH"%(len(data)/2)
+    data = struct.unpack(fmt, data)
+    data = numpy.array(data, dtype='h')
+    fourier = numpy.fft.fft(data)
+    ffty = numpy.abs(fourier[0:len(fourier)/2])/1000
+    ffty1 = ffty[:len(ffty)/2]
+    ffty2 = ffty[len(ffty)/2::]+2
+    ffty2 = ffty2[::-1]
+    ffty = ffty1+ffty2
+    ffty = numpy.log(ffty)-2
+    fourier = list(ffty)[4:-4]
+    fourier = fourier[:len(fourier)/2]
+    size = len(fourier)
+    levels = [sum(fourier[i:(i+size/bins)]) for i in xrange(0, size, size/bins)][:bins]
+    
+    return levels
+
+def visualize(device):
+    global data
+    
+    p = pyaudio.PyAudio()
+
+    stream = p.open(format = pyaudio.paInt16,
+                    channels = 1,
+                    rate = sample_rate,
+                    input = True,
+                    frames_per_buffer = chunk,
+                    input_device_index = device)
+    
+    try:
+        while True:
+            catch_data = False
+            data = get_coeffs(stream.read(chunk), 
+                              chunk, 
+                              sample_rate, 
+                              bins)
+              
+    except KeyboardInterrupt:
+        sys.exit(1)
+        
+    finally:
+        p.terminate()
+
+
+def main():
+    th = Thread(target=visualize, args=(find_input_device(),))
+    th.daemon = True
+    th.start()
+    app = Graph()
+    GLib.timeout_add(50, app.create_diagram)
+    Gtk.main()
+
+if __name__ == '__main__':
+    main()    
